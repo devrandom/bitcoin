@@ -640,40 +640,39 @@ Value getbalance(const Array& params, bool fHelp)
     if (params.size() == 0)
         return  ValueFromAmount(GetBalance());
 
+    int nMinDepth = 1;
+    if (params.size() > 1)
+        nMinDepth = params[1].get_int();
+
     if (params[0].get_str() == "*") {
         // Calculate total balance a different way from GetBalance()
         // (GetBalance() sums up all unspent TxOuts)
         // getbalance and getbalance '*' should always return the same number.
         int64 nBalance = 0;
-        vector<string> vAccounts;
         for (map<uint256, CWalletTx>::iterator it = mapWallet.begin(); it != mapWallet.end(); ++it)
         {
             const CWalletTx& wtx = (*it).second;
-            int64 allGenerated, allFee;
-            allGenerated = allFee = 0;
+            if (!wtx.IsFinal())
+                continue;
+
+            int64 allGeneratedImmature, allGeneratedMature, allFee;
+            allGeneratedImmature = allGeneratedMature = allFee = 0;
             string strSentAccount;
             list<pair<string, int64> > listReceived;
             list<pair<string, int64> > listSent;
-            wtx.GetAmounts(allGenerated, listReceived, listSent, allFee, strSentAccount);
-            foreach(const PAIRTYPE(string,int64)& r, listReceived)
-            {
-                nBalance += r.second;
-                if (!count(vAccounts.begin(), vAccounts.end(), r.first))
-                    vAccounts.push_back(r.first);
-            }
+            wtx.GetAmounts(allGeneratedImmature, allGeneratedMature, listReceived, listSent, allFee, strSentAccount);
+            if (wtx.GetDepthInMainChain() >= nMinDepth)
+                foreach(const PAIRTYPE(string,int64)& r, listReceived)
+                    nBalance += r.second;
             foreach(const PAIRTYPE(string,int64)& r, listSent)
                 nBalance -= r.second;
             nBalance -= allFee;
-            nBalance += allGenerated;
+            nBalance += allGeneratedMature;
         }
-        printf("Found %d accounts\n", vAccounts.size());
         return  ValueFromAmount(nBalance);
     }
 
     string strAccount = AccountFromValue(params[0]);
-    int nMinDepth = 1;
-    if (params.size() > 1)
-        nMinDepth = params[1].get_int();
 
     int64 nBalance = GetAccountBalance(strAccount, nMinDepth);
 
@@ -993,21 +992,29 @@ Value listreceivedbyaccount(const Array& params, bool fHelp)
 
 void ListTransactions(const CWalletTx& wtx, const string& strAccount, int nMinDepth, bool fLong, Array& ret)
 {
-    int64 nGenerated, nFee;
+    int64 nGeneratedImmature, nGeneratedMature, nFee;
     string strSentAccount;
     list<pair<string, int64> > listReceived;
     list<pair<string, int64> > listSent;
-    wtx.GetAmounts(nGenerated, listReceived, listSent, nFee, strSentAccount);
+    wtx.GetAmounts(nGeneratedImmature, nGeneratedMature, listReceived, listSent, nFee, strSentAccount);
 
     bool fAllAccounts = (strAccount == string("*"));
 
     // Generated blocks assigned to account ""
-    if (nGenerated != 0 && (fAllAccounts || strAccount == ""))
+    if ((nGeneratedMature+nGeneratedImmature) != 0 && (fAllAccounts || strAccount == ""))
     {
         Object entry;
         entry.push_back(Pair("account", string("")));
-        entry.push_back(Pair("category", "generate"));
-        entry.push_back(Pair("amount", ValueFromAmount(nGenerated)));
+        if (nGeneratedImmature)
+        {
+            entry.push_back(Pair("category", wtx.GetDepthInMainChain() ? "immature" : "orphan"));
+            entry.push_back(Pair("amount", ValueFromAmount(nGeneratedImmature)));
+        }
+        else
+        {
+            entry.push_back(Pair("category", "generate"));
+            entry.push_back(Pair("amount", ValueFromAmount(nGeneratedMature)));
+        }
         if (fLong)
             WalletTxToJSON(wtx, entry);
         ret.push_back(entry);
@@ -1159,17 +1166,17 @@ Value listaccounts(const Array& params, bool fHelp)
         for (map<uint256, CWalletTx>::iterator it = mapWallet.begin(); it != mapWallet.end(); ++it)
         {
             const CWalletTx& wtx = (*it).second;
-            int64 nGenerated, nFee;
+            int64 nGeneratedImmature, nGeneratedMature, nFee;
             string strSentAccount;
             list<pair<string, int64> > listReceived;
             list<pair<string, int64> > listSent;
-            wtx.GetAmounts(nGenerated, listReceived, listSent, nFee, strSentAccount);
+            wtx.GetAmounts(nGeneratedImmature, nGeneratedMature, listReceived, listSent, nFee, strSentAccount);
             mapAccountBalances[strSentAccount] -= nFee;
             foreach(const PAIRTYPE(string, int64)& s, listSent)
                 mapAccountBalances[strSentAccount] -= s.second;
             if (wtx.GetDepthInMainChain() >= nMinDepth)
             {
-                mapAccountBalances[""] += nGenerated;
+                mapAccountBalances[""] += nGeneratedMature;
                 foreach(const PAIRTYPE(string, int64)& r, listReceived)
                     if (mapAddressBook.count(r.first))
                         mapAccountBalances[mapAddressBook[r.first]] += r.second;
@@ -1472,7 +1479,7 @@ string HTTPPost(const string& strMsg, const map<string,string>& mapRequestHeader
 {
     ostringstream s;
     s << "POST / HTTP/1.1\r\n"
-      << "User-Agent: json-rpc/1.0\r\n"
+      << "User-Agent: bitcoin-json-rpc/" << FormatFullVersion() << "\r\n"
       << "Host: 127.0.0.1\r\n"
       << "Content-Type: application/json\r\n"
       << "Content-Length: " << strMsg.size() << "\r\n"
@@ -1490,7 +1497,10 @@ string rfc1123Time()
     time_t now;
     time(&now);
     struct tm* now_gmt = gmtime(&now);
-    strftime(buffer, sizeof(buffer), "%a, %d %b %Y %H:%M:%S %Z", now_gmt);
+    string locale(setlocale(LC_TIME, NULL));
+    setlocale(LC_TIME, "C"); // we want posix (aka "C") weekday/month strings
+    strftime(buffer, sizeof(buffer), "%a, %d %b %Y %H:%M:%S +0000", now_gmt);
+    setlocale(LC_TIME, locale.c_str());
     return string(buffer);
 }
 
@@ -1499,7 +1509,7 @@ string HTTPReply(int nStatus, const string& strMsg)
     if (nStatus == 401)
         return strprintf("HTTP/1.0 401 Authorization Required\r\n"
             "Date: %s\r\n"
-            "Server: bitcoin-json-rpc\r\n"
+            "Server: bitcoin-json-rpc/%s\r\n"
             "WWW-Authenticate: Basic realm=\"jsonrpc\"\r\n"
             "Content-Type: text/html\r\n"
             "Content-Length: 296\r\n"
@@ -1512,7 +1522,7 @@ string HTTPReply(int nStatus, const string& strMsg)
             "<META HTTP-EQUIV='Content-Type' CONTENT='text/html; charset=ISO-8859-1'>\r\n"
             "</HEAD>\r\n"
             "<BODY><H1>401 Unauthorized.</H1></BODY>\r\n"
-            "</HTML>\r\n", rfc1123Time().c_str());
+            "</HTML>\r\n", rfc1123Time().c_str(), FormatFullVersion().c_str());
     string strStatus;
          if (nStatus == 200) strStatus = "OK";
     else if (nStatus == 400) strStatus = "Bad Request";
@@ -1524,13 +1534,14 @@ string HTTPReply(int nStatus, const string& strMsg)
             "Connection: close\r\n"
             "Content-Length: %d\r\n"
             "Content-Type: application/json\r\n"
-            "Server: bitcoin-json-rpc/1.0\r\n"
+            "Server: bitcoin-json-rpc/%s\r\n"
             "\r\n"
             "%s",
         nStatus,
         strStatus.c_str(),
         rfc1123Time().c_str(),
         strMsg.size(),
+        FormatFullVersion().c_str(),
         strMsg.c_str());
 }
 

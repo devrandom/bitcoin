@@ -1665,6 +1665,10 @@ COptionsDialog::COptionsDialog(wxWindow* parent) : COptionsDialogBase(parent)
     m_checkBoxStartOnSystemStartup->SetValue(fTmpStartOnSystemStartup = GetStartOnSystemStartup());
     m_checkBoxMinimizeToTray->SetValue(fMinimizeToTray);
     m_checkBoxMinimizeOnClose->SetValue(fMinimizeOnClose);
+    if (fHaveUPnP)
+        m_checkBoxUseUPnP->SetValue(fUseUPnP);
+    else
+        m_checkBoxUseUPnP->Enable(false);
     m_checkBoxUseProxy->SetValue(fUseProxy);
     m_textCtrlProxyIP->Enable(fUseProxy);
     m_textCtrlProxyPort->Enable(fUseProxy);
@@ -1784,6 +1788,13 @@ void COptionsDialog::OnButtonApply(wxCommandEvent& event)
         walletdb.WriteSetting("fMinimizeOnClose", fMinimizeOnClose);
     }
 
+    if (fHaveUPnP && fUseUPnP != m_checkBoxUseUPnP->GetValue())
+    {
+        fUseUPnP = m_checkBoxUseUPnP->GetValue();
+        walletdb.WriteSetting("fUseUPnP", fUseUPnP);
+        MapPort(fUseUPnP);
+    }
+
     fUseProxy = m_checkBoxUseProxy->GetValue();
     walletdb.WriteSetting("fUseProxy", fUseProxy);
 
@@ -1803,7 +1814,7 @@ void COptionsDialog::OnButtonApply(wxCommandEvent& event)
 
 CAboutDialog::CAboutDialog(wxWindow* parent) : CAboutDialogBase(parent)
 {
-    m_staticTextVersion->SetLabel(strprintf(_("version %s%s BETA"), FormatVersion(VERSION).c_str(), pszSubVer));
+    m_staticTextVersion->SetLabel(strprintf(_("version %s"), FormatFullVersion().c_str()));
 
     // Change (c) into UTF-8 or ANSI copyright symbol
     wxString str = m_staticTextMain->GetLabel();
@@ -2236,7 +2247,7 @@ void CSendingDialog::OnReply2(CDataStream& vRecv)
         if (!CreateTransaction(scriptPubKey, nPrice, wtx, reservekey, nFeeRequired))
         {
             if (nPrice + nFeeRequired > GetBalance())
-                Error(strprintf(_("This is an oversized transaction that requires a transaction fee of %s"), FormatMoney(nFeeRequired).c_str()));
+                Error(strprintf(_("This transaction requires a transaction fee of at least %s because of its amount, complexity, or use of recently received funds"), FormatMoney(nFeeRequired).c_str()));
             else
                 Error(_("Transaction creation failed"));
             return;
