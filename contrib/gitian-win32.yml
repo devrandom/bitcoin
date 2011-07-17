@@ -14,20 +14,40 @@ remotes:
 - "url": "https://github.com/bitcoin/bitcoin.git"
   "dir": "bitcoin"
 files:
-- "wxWidgets-2.9.1.tar.bz2"
-- "boost_1_43_0.tar.bz2"
+- "wxwidgets-win32-2.9.1-gitian.zip"
+- "boost-win32-1.43.0-gitian.zip"
 - "openssl-1.0.0d.tar.gz"
 - "db-4.7.25.NC.tar.gz"
 - "upnpc-exe-win32-20110215.zip"
 - "miniupnpc-1.5.20110215.tar.gz"
-- "WSPiApi.h"
+#- "WSPiApi.h"
 script: |
   #
-  tar xjf wxWidgets-2.9.1.tar.bz2
+  mkdir wxWidgets-2.9.1
   cd wxWidgets-2.9.1
-  ./configure --host=i586-mingw32msvc --build=i686-linux --disable-shared --enable-monolithic --without-libpng --disable-svg
-  perl -i -p -e "s/__TIME__/\"$REFERENCE_TIME\"/;s/__DATE__/\"$REFERENCE_DATE\"/" include/wx/chartype.h
-  make $MAKEOPTS
+  mkdir lib
+  unzip ../wxwidgets-win32-2.9.1-gitian.zip
+  cd bin/$GBUILD_BITS
+  for lib in wx_mswu; do
+    i586-mingw32msvc-ar rc ../../lib/lib${lib}-2.9-i586-mingw32msvc.a $lib/*.o
+    i586-mingw32msvc-ranlib ../../lib/lib${lib}-2.9-i586-mingw32msvc.a
+  done
+  cp -a wx ../../lib
+  cd ../..
+  mv include/wx-2.9/wx include
+  cd ..
+  #
+  mkdir boost_1_43_0
+  cd boost_1_43_0
+  mkdir -p stage/lib
+  unzip ../boost-win32-1.43.0-gitian.zip
+  cd bin/$GBUILD_BITS
+  for lib in *; do
+    i586-mingw32msvc-ar rc ../../stage/lib/libboost_${lib}-mt-s.a $lib/*.o
+    i586-mingw32msvc-ranlib ../../stage/lib/libboost_${lib}-mt-s.a
+  done
+  cd ../..
+  mv include/boost .
   cd ..
   #
   tar xzf openssl-1.0.0d.tar.gz
@@ -42,17 +62,6 @@ script: |
   make $MAKEOPTS
   cd ../..
   #
-  tar xjf boost_1_43_0.tar.bz2
-  cd boost_1_43_0
-  echo "using gcc : 4.4 : i586-mingw32msvc-g++
-        :
-        <rc>i586-mingw32msvc-windres
-        <archiver>i586-mingw32msvc-ar
-  ;" > user-config.jam
-  ./bootstrap.sh --without-icu
-  ./bjam toolset=gcc target-os=windows threadapi=win32 threading=multi --user-config=user-config.jam --without-mpi --without-python -sNO_BZIP2=1 -sNO_ZLIB=1 --layout=tagged --build-type=complete $MAKEOPTS stage
-  cd ..
-  #
   mkdir upnpc-exe-win32-20110215
   cd upnpc-exe-win32-20110215
   unzip ../upnpc-exe-win32-20110215.zip
@@ -62,7 +71,7 @@ script: |
   mv ./miniupnpc-1.5.20110215/* ./
   cd ../..
   #
-  cp WSPiApi.h $HOME/build
+  #cp WSPiApi.h $HOME/build
   #
   cd bitcoin
   mkdir -p $OUTDIR/src
@@ -73,7 +82,7 @@ script: |
   cp $OUTDIR/src/COPYING $OUTDIR/license.txt
   cd src
   sed 's/$(DEBUGFLAGS)//' < makefile.linux-mingw > makefile.linux-mingw.2 && mv makefile.linux-mingw.2 makefile.linux-mingw
-  sed 's|//#include <WSPiApi.h>|#include <WSPiApi.h>|' < net.cpp > net.cpp.2 && mv net.cpp.2 net.cpp
+  #sed 's|//#include <WSPiApi.h>|#include <WSPiApi.h>|' < net.cpp > net.cpp.2 && mv net.cpp.2 net.cpp
   make -f makefile.linux-mingw $MAKEOPTS DEPSDIR=$HOME/build bitcoin.exe USE_UPNP=1
   make -f makefile.linux-mingw $MAKEOPTS DEPSDIR=$HOME/build bitcoind.exe USE_UPNP=0
   i586-mingw32msvc-strip bitcoin.exe
