@@ -286,6 +286,50 @@ public:
 static CRegTestParams regTestParams;
 
 /**
+ * Blockstack
+ */
+class CBlockstackParams : public CTestNetParams {
+public:
+    CBlockstackParams() {
+        networkID = CBaseChainParams::BLOCKSTACK;
+        strNetworkID = "blockstack";
+        pchMessageStart[0] = 0xf0;
+        pchMessageStart[1] = 0x0f;
+        pchMessageStart[2] = 0xb5;
+        pchMessageStart[3] = 0xda;
+        nSubsidyHalvingInterval = 150;
+        nEnforceBlockUpgradeMajority = 750;
+        nRejectBlockOutdatedMajority = 950;
+        nToCheckBlockUpgradeMajority = 1000;
+        nMinerThreads = 1;
+        nTargetTimespan = 20 * 365 * 24 * 60 * 60; //! 20 years
+        nTargetSpacing = 1; // one second
+        bnProofOfWorkLimit = ~uint256(0) >> 1;
+        genesis.nTime = 1296688602;
+        genesis.nBits = 0x207fffff;
+        genesis.nNonce = 2;
+        hashGenesisBlock = genesis.GetHash();
+        nDefaultPort = 28883;
+        assert(hashGenesisBlock == uint256("0x0f9188f13cb7b2c71f2a335e3a4fc328bf5beb436012afca590b1a11466e2206"));
+
+        vFixedSeeds.clear(); //! Blockstack mode doesn't have any fixed seeds.
+        vSeeds.clear();  //! Blockstack mode doesn't have any DNS seeds.
+
+        fRequireRPCPassword = false;
+        fMiningRequiresPeers = false;
+        fAllowMinDifficultyBlocks = true;
+        fDefaultConsistencyChecks = true;
+        fRequireStandard = false;
+        fMineBlocksOnDemand = true;
+        fTestnetToBeDeprecatedFieldRPC = false;
+    }
+    const Checkpoints::CCheckpointData& Checkpoints() const
+    {
+        return dataRegtest;
+    }
+};
+static CBlockstackParams blockstackParams;
+/**
  * Unit test
  */
 class CUnitTestParams : public CMainParams, public CModifiableParams {
@@ -344,6 +388,8 @@ CChainParams &Params(CBaseChainParams::Network network) {
             return testNetParams;
         case CBaseChainParams::REGTEST:
             return regTestParams;
+        case CBaseChainParams::BLOCKSTACK:
+            return blockstackParams;
         case CBaseChainParams::UNITTEST:
             return unitTestParams;
         default:

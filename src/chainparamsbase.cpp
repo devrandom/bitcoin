@@ -57,6 +57,21 @@ public:
 static CBaseRegTestParams regTestParams;
 
 /*
+ * Blockstack
+ */
+class CBaseBlockstackParams : public CBaseTestNetParams
+{
+public:
+    CBaseBlockstackParams()
+    {
+        networkID = CBaseChainParams::BLOCKSTACK;
+        nRPCPort = 28882;
+        strDataDir = "blockstack";
+    }
+};
+static CBaseBlockstackParams blockstackParams;
+
+/*
  * Unit test
  */
 class CBaseUnitTestParams : public CBaseMainParams
@@ -90,6 +105,9 @@ void SelectBaseParams(CBaseChainParams::Network network)
     case CBaseChainParams::REGTEST:
         pCurrentBaseParams = &regTestParams;
         break;
+    case CBaseChainParams::BLOCKSTACK:
+        pCurrentBaseParams = &blockstackParams;
+        break;
     case CBaseChainParams::UNITTEST:
         pCurrentBaseParams = &unitTestParams;
         break;
@@ -102,12 +120,15 @@ void SelectBaseParams(CBaseChainParams::Network network)
 CBaseChainParams::Network NetworkIdFromCommandLine()
 {
     bool fRegTest = GetBoolArg("-regtest", false);
+    bool fBlockstack = GetBoolArg("-blockstack", false);
     bool fTestNet = GetBoolArg("-testnet", false);
 
     if (fTestNet && fRegTest)
         return CBaseChainParams::MAX_NETWORK_TYPES;
     if (fRegTest)
         return CBaseChainParams::REGTEST;
+    if (fBlockstack)
+        return CBaseChainParams::BLOCKSTACK;
     if (fTestNet)
         return CBaseChainParams::TESTNET;
     return CBaseChainParams::MAIN;

@@ -20,6 +20,7 @@ public:
         TESTNET,
         REGTEST,
         UNITTEST,
+        BLOCKSTACK,
 
         MAX_NETWORK_TYPES
     };
